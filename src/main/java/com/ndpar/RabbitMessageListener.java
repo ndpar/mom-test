@@ -13,7 +13,6 @@ public class RabbitMessageListener implements MessageListener {
 
     @Override
     public void onMessage(Message message) {
-//        System.out.println(message);
         testResultAggregator.decrementCounter();
     }
 }

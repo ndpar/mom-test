@@ -7,6 +7,7 @@ import org.springframework.jmx.export.annotation.ManagedOperation;
 import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
@@ -18,8 +19,14 @@ public class TestResultAggregator {
     private AtomicInteger counter = new AtomicInteger(0);
     private long start;
 
+    @Resource
+    private JmsQueueSender activeSender;
+
+    @Resource
+    private JmsQueueSender hornetSender;
+
     @Autowired
-    private JmsQueueSender sender;
+    private RabbitSender rabbitSender;
 
     @Autowired
     private TaskExecutor taskExecutor;
@@ -34,21 +41,30 @@ public class TestResultAggregator {
         this.loops = loops;
     }
 
-    @ManagedOperation(description = "Run JMS load test")
-    public void runJmsTest() {
-        start = System.currentTimeMillis();
+    @ManagedOperation(description = "Run ActiveMQ load test")
+    public void runActiveTest() {
         counter.set(loops);
+        start = System.currentTimeMillis();
         for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new Task("Test"));
+            taskExecutor.execute(new JmsTask(activeSender, "Test"));
+        }
+    }
+
+    @ManagedOperation(description = "Run HornetQ load test")
+    public void runHornetTest() {
+        counter.set(loops);
+        start = System.currentTimeMillis();
+        for (int i = 0; i < loops; i++) {
+            taskExecutor.execute(new JmsTask(hornetSender, "Test"));
         }
     }
 
     @ManagedOperation(description = "Run RabbitMQ load test")
     public void runRabbitTest() {
-        start = System.currentTimeMillis();
         counter.set(loops);
+        start = System.currentTimeMillis();
         for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new Task("Test"));
+            taskExecutor.execute(new RabbitTask(rabbitSender, "Test"));
         }
     }
 
@@ -70,18 +86,40 @@ public class TestResultAggregator {
     }
 
 
-    private class Task implements Runnable {
+    private class JmsTask implements Runnable {
 
         private String text;
+        private JmsQueueSender jmsSender;
 
-        public Task(String text) {
+        public JmsTask(JmsQueueSender jmsSender, String text) {
+            this.jmsSender = jmsSender;
             this.text = text;
         }
 
         @Override
         public void run() {
             try {
-                sender.send(text);
+                jmsSender.send(text);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private class RabbitTask implements Runnable {
+
+        private String text;
+        private RabbitSender rabbitSender;
+
+        public RabbitTask(RabbitSender rabbitSender, String text) {
+            this.rabbitSender = rabbitSender;
+            this.text = text;
+        }
+
+        @Override
+        public void run() {
+            try {
+                rabbitSender.send(text);
             } catch (Exception e) {
                 e.printStackTrace();
             }
