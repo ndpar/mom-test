@@ -4,12 +4,15 @@
        xmlns:c="http://www.springframework.org/schema/c"
        xmlns:context="http://www.springframework.org/schema/context"
        xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:rabbit="http://www.springframework.org/schema/rabbit"
        xmlns:tx="http://www.springframework.org/schema/tx"
        xsi:schemaLocation="http://www.springframework.org/schema/beans
                            http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
                            http://www.springframework.org/schema/context
                            http://www.springframework.org/schema/context/spring-context-3.1.xsd
-		                   http://www.springframework.org/schema/tx
+		                   http://www.springframework.org/schema/rabbit
+                           http://www.springframework.org/schema/rabbit/spring-rabbit-1.0.xsd
+                           http://www.springframework.org/schema/tx
 		                   http://www.springframework.org/schema/tx/spring-tx-3.1.xsd">
 
     <context:component-scan base-package="com.ndpar"/>
@@ -17,49 +20,6 @@
     <tx:annotation-driven/>
 
     <beans>
-<!--
-        <bean id="jmsConnectionFactory" class="org.apache.activemq.spring.ActiveMQConnectionFactory"
-              p:brokerURL="tcp://localhost:61616"/>
-
-        <bean id="testQueue" class="org.apache.activemq.command.ActiveMQQueue" c:name="queue/Test"/>
--->
-
-
-
-
-
-
-
-
-        <bean id="hornetQJndiTemplate" class="org.springframework.jndi.JndiTemplate" lazy-init="true">
-            <property name="environment">
-                <props>
-                    <prop key="java.naming.factory.initial">org.jnp.interfaces.NamingContextFactory</prop>
-                    <prop key="java.naming.provider.url">jnp://localhost:1099</prop>
-                    <prop key="java.naming.factory.url.pkgs">org.jboss.naming:org.jnp.interfaces</prop>
-                </props>
-            </property>
-        </bean>
-        <bean id="jmsConnectionFactory"
-              class="org.springframework.jms.connection.UserCredentialsConnectionFactoryAdapter"
-              p:username="guest" p:password="guest">
-            <property name="targetConnectionFactory">
-                <bean class="org.springframework.jndi.JndiObjectFactoryBean" depends-on="hornetQJndiTemplate"
-                      lazy-init="true"
-                      p:jndiTemplate-ref="hornetQJndiTemplate" p:jndiName="/ConnectionFactory"/>
-            </property>
-        </bean>
-        <bean id="testQueue" class="org.springframework.jndi.JndiObjectFactoryBean"
-              depends-on="hornetQJndiTemplate"
-              lazy-init="true"
-              p:jndiTemplate-ref="hornetQJndiTemplate" p:jndiName="/queue/Test"/>
-
-
-
-
-
-
-
         <bean id="testTemplate" class="org.springframework.jms.core.JmsTemplate"
               p:connectionFactory-ref="jmsConnectionFactory"
               p:defaultDestination-ref="testQueue"
@@ -72,10 +32,63 @@
               p:pubSubDomain="false"
               p:sessionTransacted="true"
               p:errorHandler-ref="jmsErrorHandler"
-              p:concurrency="2-10"/>
+              p:concurrency="2-25"/>
 
         <bean id="jmsQueueListener" class="com.ndpar.JmsQueueListener"/>
 
         <bean id="jmsErrorHandler" class="com.ndpar.JmsErrorHandler"/>
+
+        <bean id="taskExecutor" class="org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor"
+              p:corePoolSize="5"
+              p:maxPoolSize="25"
+              p:queueCapacity="25">
+            <property name="rejectedExecutionHandler">
+                <bean class="java.util.concurrent.ThreadPoolExecutor$CallerRunsPolicy"/>
+            </property>
+        </bean>
+    </beans>
+
+    <beans profile="activemq">
+        <bean id="jmsConnectionFactory" class="org.apache.activemq.spring.ActiveMQConnectionFactory"
+              p:brokerURL="tcp://localhost:61616"/>
+
+        <bean id="testQueue" class="org.apache.activemq.command.ActiveMQQueue" c:name="queue/Test"/>
+    </beans>
+
+    <beans profile="hornetq">
+        <bean id="hornetQJndiTemplate" class="org.springframework.jndi.JndiTemplate" lazy-init="true">
+            <property name="environment">
+                <props>
+                    <prop key="java.naming.factory.initial">org.jnp.interfaces.NamingContextFactory</prop>
+                    <prop key="java.naming.provider.url">jnp://localhost:1099</prop>
+                    <prop key="java.naming.factory.url.pkgs">org.jboss.naming:org.jnp.interfaces</prop>
+                </props>
+            </property>
+        </bean>
+        <bean id="jmsConnectionFactory" p:username="guest" p:password="guest"
+              class="org.springframework.jms.connection.UserCredentialsConnectionFactoryAdapter">
+            <property name="targetConnectionFactory">
+                <bean class="org.springframework.jndi.JndiObjectFactoryBean" depends-on="hornetQJndiTemplate"
+                      lazy-init="true"
+                      p:jndiTemplate-ref="hornetQJndiTemplate" p:jndiName="/ConnectionFactory"/>
+            </property>
+        </bean>
+        <bean id="testQueue" class="org.springframework.jndi.JndiObjectFactoryBean"
+              depends-on="hornetQJndiTemplate"
+              lazy-init="true"
+              p:jndiTemplate-ref="hornetQJndiTemplate"
+              p:jndiName="/queue/Test"/>
+    </beans>
+
+    <beans profile="rabbitmq">
+        <rabbit:connection-factory id="connectionFactory" channel-cache-size="25"/>
+
+        <rabbit:template id="amqpTemplate" connection-factory="connectionFactory"/>
+
+        <rabbit:queue id="amqQueue" name="queue.Test" />
+
+        <rabbit:listener-container connection-factory="connectionFactory" concurrency="25">
+            <rabbit:listener queues="amqQueue" ref="rabbitMessageListener" />
+        </rabbit:listener-container>
     </beans>
 </beans>
