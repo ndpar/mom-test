@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @ManagedResource(objectName = "com.ndpar:name=TestResultAggregator")
 public class TestResultAggregator {
 
+    private int messageSize = 10;
     private int loops = 10;
 
     private AtomicInteger counter = new AtomicInteger(0);
@@ -31,6 +32,16 @@ public class TestResultAggregator {
     @Autowired
     private TaskExecutor taskExecutor;
 
+    @ManagedAttribute(description = "Message size in bytes")
+    public int getMessageSize() {
+        return messageSize;
+    }
+
+    @ManagedAttribute
+    public void setMessageSize(int messageSize) {
+        this.messageSize = messageSize;
+    }
+
     @ManagedAttribute
     public int getLoops() {
         return loops;
@@ -43,28 +54,31 @@ public class TestResultAggregator {
 
     @ManagedOperation(description = "Run ActiveMQ load test")
     public void runActiveTest() {
+        String msg = generateText(messageSize);
         counter.set(loops);
         start = System.currentTimeMillis();
         for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new JmsTask(activeSender, "Test"));
+            taskExecutor.execute(new JmsTask(activeSender, msg));
         }
     }
 
     @ManagedOperation(description = "Run HornetQ load test")
     public void runHornetTest() {
+        String msg = generateText(messageSize);
         counter.set(loops);
         start = System.currentTimeMillis();
         for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new JmsTask(hornetSender, "Test"));
+            taskExecutor.execute(new JmsTask(hornetSender, msg));
         }
     }
 
     @ManagedOperation(description = "Run RabbitMQ load test")
     public void runRabbitTest() {
+        String msg = generateText(messageSize);
         counter.set(loops);
         start = System.currentTimeMillis();
         for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new RabbitTask(rabbitSender, "Test"));
+            taskExecutor.execute(new RabbitTask(rabbitSender, msg));
         }
     }
 
@@ -83,6 +97,14 @@ public class TestResultAggregator {
         result.append(String.format("Throughput: %d (msg/sec)\n", 1000 * loops / duration));
         result.append("---------------\n");
         return result.toString();
+    }
+
+    private static String generateText(int bytes) {
+        byte[] result = new byte[bytes];
+        for (int i = 0; i < bytes; i++) {
+            result[i] = 'a';
+        }
+        return new String(result);
     }
 
 
