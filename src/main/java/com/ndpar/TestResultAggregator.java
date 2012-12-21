@@ -1,18 +1,16 @@
 package com.ndpar;
 
+import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Required;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedOperation;
-import org.springframework.jmx.export.annotation.ManagedResource;
-import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Service
-@ManagedResource(objectName = "com.ndpar:name=TestResultAggregator")
-public class TestResultAggregator {
+public class TestResultAggregator implements BeanNameAware {
 
     private int messageSize = 10;
     private int loops = 10;
@@ -20,17 +18,21 @@ public class TestResultAggregator {
     private AtomicInteger counter = new AtomicInteger(0);
     private long start;
 
-    @Resource
-    private JmsQueueSender activeSender;
-
-    @Resource
-    private JmsQueueSender hornetSender;
-
-    @Autowired
-    private RabbitSender rabbitSender;
+    private MessageSender messageSender;
+    private String beanName;
 
     @Autowired
     private TaskExecutor taskExecutor;
+
+    @Override
+    public void setBeanName(String name) {
+        this.beanName = name;
+    }
+
+    @Required
+    public void setMessageSender(MessageSender messageSender) {
+        this.messageSender = messageSender;
+    }
 
     @ManagedAttribute(description = "Message size in bytes")
     public int getMessageSize() {
@@ -52,33 +54,13 @@ public class TestResultAggregator {
         this.loops = loops;
     }
 
-    @ManagedOperation(description = "Run ActiveMQ load test")
-    public void runActiveTest() {
+    @ManagedOperation(description = "Run load test")
+    public void runTest() {
         String msg = generateText(messageSize);
         counter.set(loops);
         start = System.currentTimeMillis();
         for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new JmsTask(activeSender, msg));
-        }
-    }
-
-    @ManagedOperation(description = "Run HornetQ load test")
-    public void runHornetTest() {
-        String msg = generateText(messageSize);
-        counter.set(loops);
-        start = System.currentTimeMillis();
-        for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new JmsTask(hornetSender, msg));
-        }
-    }
-
-    @ManagedOperation(description = "Run RabbitMQ load test")
-    public void runRabbitTest() {
-        String msg = generateText(messageSize);
-        counter.set(loops);
-        start = System.currentTimeMillis();
-        for (int i = 0; i < loops; i++) {
-            taskExecutor.execute(new RabbitTask(rabbitSender, msg));
+            taskExecutor.execute(new MessageSendTask(messageSender, msg));
         }
     }
 
@@ -91,11 +73,12 @@ public class TestResultAggregator {
 
     private String stats(long duration) {
         StringBuffer result = new StringBuffer();
-        result.append("---------------\n");
+        result.append(beanName);
+        result.append(" ---------------\n");
         result.append(String.format("Duration: %d (ms)\n", duration));
         result.append(String.format("Messages: %d\n", loops));
         result.append(String.format("Throughput: %d (msg/sec)\n", 1000 * loops / duration));
-        result.append("---------------\n");
+        result.append("--------------------------------\n");
         return result.toString();
     }
 
@@ -108,12 +91,12 @@ public class TestResultAggregator {
     }
 
 
-    private class JmsTask implements Runnable {
+    private class MessageSendTask implements Runnable {
 
         private String text;
-        private JmsQueueSender jmsSender;
+        private MessageSender jmsSender;
 
-        public JmsTask(JmsQueueSender jmsSender, String text) {
+        public MessageSendTask(MessageSender jmsSender, String text) {
             this.jmsSender = jmsSender;
             this.text = text;
         }
@@ -122,26 +105,6 @@ public class TestResultAggregator {
         public void run() {
             try {
                 jmsSender.send(text);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private class RabbitTask implements Runnable {
-
-        private String text;
-        private RabbitSender rabbitSender;
-
-        public RabbitTask(RabbitSender rabbitSender, String text) {
-            this.rabbitSender = rabbitSender;
-            this.text = text;
-        }
-
-        @Override
-        public void run() {
-            try {
-                rabbitSender.send(text);
             } catch (Exception e) {
                 e.printStackTrace();
             }
